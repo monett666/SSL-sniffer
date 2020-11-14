@@ -1,0 +1,19 @@
+Determining if the function pcap_get_pfring_id exists failed with the following output:
+Change Dir: /home/monett666/Documents/FIT/ISA/SSL-sniffer/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f9e18/fast && /usr/bin/make -f CMakeFiles/cmTC_f9e18.dir/build.make CMakeFiles/cmTC_f9e18.dir/build
+make[1]: Entering directory '/home/monett666/Documents/FIT/ISA/SSL-sniffer/cmake-build-debug/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f9e18.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=pcap_get_pfring_id   -o CMakeFiles/cmTC_f9e18.dir/CheckFunctionExists.c.o   -c /home/monett666/JetBrains/clion-2020.1/bin/cmake/linux/share/cmake-3.16/Modules/CheckFunctionExists.c
+Linking C executable cmTC_f9e18
+/home/monett666/JetBrains/clion-2020.1/bin/cmake/linux/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f9e18.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=pcap_get_pfring_id    CMakeFiles/cmTC_f9e18.dir/CheckFunctionExists.c.o  -o cmTC_f9e18  /usr/lib/x86_64-linux-gnu/libpcap.so 
+/usr/bin/ld: CMakeFiles/cmTC_f9e18.dir/CheckFunctionExists.c.o: in function `main':
+CheckFunctionExists.c:(.text+0x14): undefined reference to `pcap_get_pfring_id'
+collect2: error: ld returned 1 exit status
+make[1]: *** [CMakeFiles/cmTC_f9e18.dir/build.make:88: cmTC_f9e18] Error 1
+make[1]: Leaving directory '/home/monett666/Documents/FIT/ISA/SSL-sniffer/cmake-build-debug/CMakeFiles/CMakeTmp'
+make: *** [Makefile:121: cmTC_f9e18/fast] Error 2
+
+
+

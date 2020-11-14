@@ -1,0 +1,1 @@
+/usr/bin/c++  -g   CMakeFiles/projekt.dir/main.cpp.o CMakeFiles/projekt.dir/args.cpp.o  -o projekt  /usr/lib/x86_64-linux-gnu/libpcap.so 

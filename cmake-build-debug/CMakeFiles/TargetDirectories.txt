@@ -1,0 +1,3 @@
+/home/monett666/Documents/FIT/ISA/SSL-sniffer/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/monett666/Documents/FIT/ISA/SSL-sniffer/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/home/monett666/Documents/FIT/ISA/SSL-sniffer/cmake-build-debug/CMakeFiles/projekt.dir
