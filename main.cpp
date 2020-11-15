@@ -43,6 +43,8 @@ using namespace std;
 bool file = false;
 bool iface = false;
 
+
+
 //https://www.tcpdump.org/pcap.html
 
 
@@ -155,6 +157,7 @@ void print_ip6(const struct in6_addr in) {
 }
 
 
+
 int main(int argc, char **argv) {
 
     unsigned int total_header_len; //ethernet header + ip header + tcp header
@@ -166,9 +169,11 @@ int main(int argc, char **argv) {
 
     int bytes = 0;
 
-    bool first_fin = false;
     bool client_hello = false;
     bool server_hello = false;
+    bool first_fin = false;
+
+
 
     vector<u_char> payload;
     vector<u_char> clientHello;
@@ -203,167 +208,186 @@ int main(int argc, char **argv) {
 
         while (pcap_next_ex(pcap, &header, &data) >= 0) {
 
-            auto *ip6h = (struct ip6_hdr*) (data + sizeof(struct ethhdr)); // data/buffer?
-            auto *iph = (struct iphdr*) (data+ sizeof(struct ethhdr));
+            auto *ip6h = (struct ip6_hdr *) (data + sizeof(struct ethhdr)); // data/buffer?
+            auto *iph = (struct iphdr *) (data + sizeof(struct ethhdr));
             auto *eth_h = (struct ethhdr *) data;
+            unsigned short iphdrlen;
+            unsigned int tcphdrlen;
+
+            uint32_t client_ip;
+            uint32_t server_ip;
+
+            struct in6_addr client_ip6{};
+            struct in6_addr server_ip6{};
+
+            uint16_t client_port;
+
 
             if (header->len != header->caplen)
                 printf("Warning capture size different than packet size> %ud bytes \n", header->len);
 
-            ALLpacketsCount += 1;
+            switch (ntohs(eth_h->h_proto)) {
+                case ETH_P_IPV6:
+                    iphdrlen = sizeof(struct ip6_hdr);
+                    break;
 
-            /*
-             * ===============IPv6 ===============
-             */
-            // https://pcapplusplus.github.io/docs/tutorials/packet-parsing
-            // TODO
-            if (ntohs(eth_h->h_proto) == ETH_P_IPV6) {
-                auto *tcph = (struct tcphdr *) (data + sizeof(struct ip6_hdr) + sizeof(struct ethhdr));
-
-//                print_ip6(ip6h->ip6_src); // print source ipv6
-//                printf("%d,", ntohs(tcph->source)); // source port
-//                print_ip6(ip6h->ip6_dst); // destination ipv6
-
+                case ETH_P_IP:
+                    iphdrlen = iph->ihl * 4;
+                    break;
 
             }
-            /*
-             * ===============IPv4 ===============
-             */
-            if (ntohs(eth_h->h_proto) == ETH_P_IP) {
-                unsigned short iphdrlen;
-                unsigned int tcphdrlen;
-                uint32_t client_ip;
-                uint32_t server_ip;
-                uint16_t client_port;
+
+            auto *tcph = (struct tcphdr *) (data + iphdrlen + sizeof(struct ethhdr));
+
+            ALLpacketsCount += 1;
+
+            if (iph->protocol == 6) { //TCP
+                tcphdrlen = (tcph->th_off * 4) - (tcph->th_x2 * 4);
+                total_header_len = sizeof(ethhdr) + iphdrlen + tcphdrlen; // size of all headers: ether + ip + tcp
+
+                // http://blog.fourthbit.com/2014/12/23/traffic-analysis-of-an-ssl-slash-tls-session/
 
 
-                iphdrlen = iph->ihl * 4;
-                auto *tcph = (struct tcphdr *) (data + iphdrlen + sizeof(ethhdr));
+                TCPpacketCount += 1; //=======================================<packets>
+
+                /*
+                 * FIRT TCP PACKET
+                 */
+                if ((tcph->ack == 0) && (tcph->syn) == 1) { // first part of threeway handshake
 
 
-                if (iph->protocol == 6) { //TCP
+                    SNI.clear();
+                    bytes = 0;
+                    TCPpacketCount = 1;
+                    first_fin = false;
+                    client_hello = false;
+                    server_hello = false;
 
-                    tcphdrlen = (tcph->th_off * 4) - (tcph->th_x2 * 4);
-                    total_header_len = sizeof(ethhdr) + iphdrlen + tcphdrlen; // size of all headers: ether + ip + tcp
+                    switch (ntohs(eth_h->h_proto)) {
+                        case ETH_P_IPV6:
+                            client_ip6 = ip6h->ip6_src;
+                            server_ip6 = ip6h->ip6_dst;
+                            break;
 
-                    // http://blog.fourthbit.com/2014/12/23/traffic-analysis-of-an-ssl-slash-tls-session/
+                        case ETH_P_IP:
+                            client_ip = iph->saddr;
+                            server_ip = iph->daddr;
+                            break;
 
-
-                    TCPpacketCount += 1; //=======================================<packets>
-
-                    // printing packet info
-
-//                    printf("\nPacket # %i\n", ALLpacketsCount);
-//                    printf("Packet size> %d bytes\n", size);
-//                    printf("=======================\n");
-
-                    /*
-                     * FIRT TCP PACKET
-                     */
-                    if ((tcph->ack == 0) && (tcph->syn) == 1) { // first part of threeway handshake
-
-                        SNI.clear();
-                        bytes = 0;
-                        TCPpacketCount = 1;
-                        first_fin = false;
-                        client_hello = false;
-                        server_hello = false;
-
-                        client_ip = iph->saddr;
-                        server_ip = iph->daddr;
-                        client_port = tcph->source;
-
-                        // timestamp from ethernet header
-                        timestamp_sec = header->ts.tv_sec;
-                        timestamp_milisec = header->ts.tv_usec / 1000;
                     }
 
-                    if (client_port == tcph->source || client_port == tcph->dest) {
-//                        printf("this is still the same sessien | packet: %d \n", TCPpacketCount);
+
+                    client_port = tcph->source;
+
+                    // timestamp from ethernet header
+                    timestamp_sec = header->ts.tv_sec;
+                    timestamp_milisec = header->ts.tv_usec / 1000;
+                }
+
+                if (client_port == tcph->source || client_port == tcph->dest) {
+//                        printf("\nthis is still the same sessien | packet: %d \n", TCPpacketCount);
 //
 //                        printf("FIN FLAG: %d\n", tcph->fin );
 //                        printf("ACK FLAG: %d\n", tcph->ack );
 //                        printf("SYN FLAG: %d\n", tcph->syn );
 
-                        // PAYLOAD
+                    // PAYLOAD
 
-                        for (u_int i = total_header_len; (i < header->caplen); i++) {
-                            //if ((i % 16) == 0) printf("\n");
-                            //printf("%.2x ", data[i]);
-                            payload.push_back(data[i]);
-                        }
-                        if (!payload.empty()) {
-                            for (int i = 0; i < payload.size() ; i++) {
-                                // printing payload
+                    for (u_int i = total_header_len; (i < header->caplen); i++) {
+                        //if ((i % 16) == 0) printf("\n");
+                        //printf("%.2x ", data[i]);
+                        payload.push_back(data[i]);
+                    }
+                    if (!payload.empty()) {
+                        for (int i = 0; i < payload.size(); i++) {
+                            // printing payload
 
 //                                if ((i % 16) == 0) printf("\n");
 //                                printf("%.2x ", payload[i]);
 
-                                // Finding record header in payload
-                                if (((payload[i] >= 0x14) && (payload[i] <= 0x17)) && (payload[i+1] == 0x03) && ((payload[i+2] >= 0x01) && payload[i+2] <= 0x04)) {
-                                    u_short length = (payload.at(i+3) << 8) + payload.at(i+4); // length value from record header
-                                    bytes += length;
+                            // Finding record header in payload
+                            if (((payload[i] >= 0x14) && (payload[i] <= 0x17)) && (payload[i + 1] == 0x03) &&
+                                ((payload[i + 2] >= 0x01) && payload[i + 2] <= 0x04)) {
+                                u_short length =
+                                        (payload.at(i + 3) << 8) + payload.at(i + 4); // length value from record header
+                                bytes += length;
 
-                                    // indicating Client hello
-                                    if ((payload[i] == 0x16)  && payload[i+5] == 0x01) { // payload[i+5] is start of handshake header, 01 is client hello
-                                        clientHello = payload;
-                                        client_hello = true;
-                                        SNI = find_SNI(clientHello, SNI, i);
-                                    }
-                                    // indicating Server hello
-                                    if ((payload[i] == 0x16)  && payload[i+5] == 0x02) {
-                                        server_hello = true;
-                                    }
+                                // indicating Client hello
+                                if ((payload[i] == 0x16) && payload[i + 5] ==
+                                                            0x01) { // payload[i+5] is start of handshake header, 01 is client hello
+                                    clientHello = payload;
+                                    client_hello = true;
+                                    SNI = find_SNI(clientHello, SNI, i);
+                                }
+                                // indicating Server hello
+                                if ((payload[i] == 0x16) && payload[i + 5] == 0x02) {
+                                    server_hello = true;
                                 }
                             }
-
                         }
 
-                        if (tcph->fin == 1 && (client_port == tcph->source)) { // client FIN (first)
-                            first_fin = true;
+                    }
 
-                        }
-                        if (tcph->fin == 1 && (client_port == tcph->dest) && first_fin) { // server FIN (second)
+                    if (tcph->fin == 1 && (client_port == tcph->source)) { // client FIN (first)
+                        first_fin = true;
 
-                            if (client_hello && server_hello) {
-                                double timestamp_lastTCP, timestamp, duration;
-                                timestamp_lastTCP = (double)header->ts.tv_sec * 1000000000 + (double)header->ts.tv_usec;
-                                timestamp = (double)timestamp_sec * 1000000000 + timestamp_milisec * 1000;
+                    }
+                    if (tcph->fin == 1 && (client_port == tcph->dest) && first_fin) { // server FIN (second)
 
-                                duration = ((double)timestamp_lastTCP - (double)timestamp) / 1000000000;
+                        if (client_hello && server_hello) {
+                            double timestamp_lastTCP, timestamp, duration;
+                            timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
+                            timestamp = (double) timestamp_sec * 1000000000 + timestamp_milisec * 1000;
 
-                                print_timestamp(timestamp_sec, timestamp_milisec);
-                                print_ip(client_ip); // print source ipv4
-                                printf("%d,", ntohs(client_port)); // source port
-                                print_ip(server_ip); // destination ipv4
-                                for (unsigned char i : SNI) {
-                                    printf("%c", i);
-                                }
-                                printf(",%d,", bytes);
-                                printf("%d,", TCPpacketCount);
-                                printf("%.6f\n", duration);
+                            duration = ((double) timestamp_lastTCP - (double) timestamp) / 1000000000;
+
+                            print_timestamp(timestamp_sec, timestamp_milisec);
+
+                            switch (ntohs(eth_h->h_proto)) {
+                                case ETH_P_IPV6:
+                                    print_ip6(client_ip6); // print source ipv6
+                                    printf("%d,", ntohs(client_port)); // source port
+                                    print_ip6(server_ip6); // destination ipv6
+                                    break;
+
+                                case ETH_P_IP:
+                                    print_ip(client_ip); // print source ipv4
+                                    printf("%d,", ntohs(client_port)); // source port
+                                    print_ip(server_ip); // destination ipv4
+                                    break;
+
                             }
 
 
-
-                            SNI.clear();
-                            bytes = 0;
-                            TCPpacketCount = 0;
-                            client_hello = false;
-                            server_hello = false;
-                            first_fin = false;
-
+                            for (unsigned char i : SNI) {
+                                printf("%c", i);
+                            }
+                            printf(",%d,", bytes);
+                            printf("%d,", TCPpacketCount);
+                            printf("%.6f\n", duration);
                         }
+
+
+                        SNI.clear();
+                        bytes = 0;
+                        TCPpacketCount = 0;
+                        client_hello = false;
+                        server_hello = false;
+                        first_fin = false;
 
 
                     }
 
+
                 }
 
+                payload.clear();
+
             }
-        payload.clear();
         }
     }
+
+
 
     /* INTERFACE SNIFFFING
      * =======================================================================
