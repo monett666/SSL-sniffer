@@ -43,6 +43,26 @@ using namespace std;
 bool file = false;
 bool iface = false;
 
+typedef struct TLS_conn {
+    unsigned int timestamp_sec;
+    unsigned int timestamp_milisec;
+    bool client_hello = false;
+    bool server_hello = false;
+    bool first_fin = false;
+    u_int TCPpacketCount = 0; // TCP packets counter
+    uint32_t client_ip;
+    uint32_t server_ip;
+    struct in6_addr client_ip6{};
+    struct in6_addr server_ip6{};
+    uint16_t client_port;
+    vector<u_char> SNI;
+    u_int bytes = 0;
+    double duration;
+//    double timestamp_lastTCP, timestamp, duration;
+
+} TLS_connection;
+
+vector<TLS_connection> connections;
 
 
 //https://www.tcpdump.org/pcap.html
@@ -84,6 +104,9 @@ vector<u_char> find_SNI(vector<u_char> clientHello, vector<u_char>SNI, int recor
     return SNI;
 
 }
+
+
+
 
 /*
  * Function converts timestamp from epoch (1970) time to human date format and print it.
@@ -156,6 +179,35 @@ void print_ip6(const struct in6_addr in) {
     printf("%s,", ipstr);
 }
 
+void print_connection(int i, double timestamp_lastTCP, int ip_version) {
+    double timestamp;
+
+    timestamp = (double) connections[i].timestamp_sec * 1000000000 + connections[i].timestamp_milisec * 1000;
+
+    connections[i].duration = ((double) timestamp_lastTCP - (double) timestamp) / 1000000000;
+
+    print_timestamp(connections[i].timestamp_sec, connections[i].timestamp_milisec);
+
+    if(ip_version == 6) {
+        print_ip6(connections[i].client_ip6); // print source ipv6
+        printf("%d,", ntohs(connections[i].client_port)); // source port
+        print_ip6(connections[i].server_ip6); // destination ipv6
+    }
+    else if(ip_version == 4) {
+        print_ip(connections[i].client_ip); // print source ipv4
+        printf("%d,", ntohs(connections[i].client_port)); // source port
+        print_ip(connections[i].server_ip); // destination ipv4
+    }
+
+
+    for (unsigned char j : connections[i].SNI) {
+        printf("%c", j);
+    }
+    printf(",%d,", connections[i].bytes);
+    printf("%d,", connections[i].TCPpacketCount);
+    printf("%.6f\n", connections[i].duration);
+}
+
 
 
 int main(int argc, char **argv) {
@@ -165,13 +217,13 @@ int main(int argc, char **argv) {
     string given_file; // file path from argument
 
     u_int ALLpacketsCount = 0;
-    u_int TCPpacketCount = 0; // TCP packets counter
+//    u_int TCPpacketCount = 0; // TCP packets counter
 
-    int bytes = 0;
+//    int bytes = 0;
 
-    bool client_hello = false;
-    bool server_hello = false;
-    bool first_fin = false;
+//    bool client_hello = false;
+//    bool server_hello = false;
+//    bool first_fin = false;
 
 
 
@@ -180,8 +232,8 @@ int main(int argc, char **argv) {
     vector<u_char> SNI;
 
 
-    unsigned int timestamp_sec;
-    unsigned int timestamp_milisec;
+//    unsigned int timestamp_sec;
+//    unsigned int timestamp_milisec;
 
     char errbuff[PCAP_ERRBUF_SIZE];
 
@@ -208,19 +260,27 @@ int main(int argc, char **argv) {
 
         while (pcap_next_ex(pcap, &header, &data) >= 0) {
 
-            auto *ip6h = (struct ip6_hdr *) (data + sizeof(struct ethhdr)); // data/buffer?
-            auto *iph = (struct iphdr *) (data + sizeof(struct ethhdr));
+
+
             auto *eth_h = (struct ethhdr *) data;
+            unsigned short ethhrdlen = sizeof(struct ethhdr);
             unsigned short iphdrlen;
             unsigned int tcphdrlen;
 
-            uint32_t client_ip;
-            uint32_t server_ip;
+//            if (ntohs(eth_h->h_proto) == ETH_P_8021Q) {
+//                ethhrdlen += 4;
+//            }
 
-            struct in6_addr client_ip6{};
-            struct in6_addr server_ip6{};
+            auto *ip6h = (struct ip6_hdr *) (data + ethhrdlen); // data/buffer?
+            auto *iph = (struct iphdr *) (data + ethhrdlen);
 
-            uint16_t client_port;
+//            uint32_t client_ip;
+//            uint32_t server_ip;
+//
+//            struct in6_addr client_ip6{};
+//            struct in6_addr server_ip6{};
+
+//            uint16_t client_port;
 
 
             if (header->len != header->caplen)
@@ -235,20 +295,18 @@ int main(int argc, char **argv) {
                     iphdrlen = iph->ihl * 4;
                     break;
 
-            }
 
-            auto *tcph = (struct tcphdr *) (data + iphdrlen + sizeof(struct ethhdr));
+            }
 
             ALLpacketsCount += 1;
 
-            if (iph->protocol == 6) { //TCP
+            if (iph->protocol == 6 || ip6h->ip6_ctlun.ip6_un1.ip6_un1_nxt == 6) { //TCP
+                auto *tcph = (struct tcphdr *) (data + iphdrlen + ethhrdlen);
                 tcphdrlen = (tcph->th_off * 4) - (tcph->th_x2 * 4);
                 total_header_len = sizeof(ethhdr) + iphdrlen + tcphdrlen; // size of all headers: ether + ip + tcp
 
                 // http://blog.fourthbit.com/2014/12/23/traffic-analysis-of-an-ssl-slash-tls-session/
 
-
-                TCPpacketCount += 1; //=======================================<packets>
 
                 /*
                  * FIRT TCP PACKET
@@ -256,136 +314,182 @@ int main(int argc, char **argv) {
                 if ((tcph->ack == 0) && (tcph->syn) == 1) { // first part of threeway handshake
 
 
-                    SNI.clear();
-                    bytes = 0;
-                    TCPpacketCount = 1;
-                    first_fin = false;
-                    client_hello = false;
-                    server_hello = false;
+//                    SNI.clear();
+                    TLS_connection conn;
+                    connections.push_back(conn);
+//                    SNI.clear();
+//                    bytes = 0;
+                    connections.back().TCPpacketCount = 1;
+//                    first_fin = false;
+//                    client_hello = false;
+//                    server_hello = false;
 
                     switch (ntohs(eth_h->h_proto)) {
                         case ETH_P_IPV6:
-                            client_ip6 = ip6h->ip6_src;
-                            server_ip6 = ip6h->ip6_dst;
+                            connections.back().client_ip6 = ip6h->ip6_src;
+                            connections.back().server_ip6 = ip6h->ip6_dst;
                             break;
 
                         case ETH_P_IP:
-                            client_ip = iph->saddr;
-                            server_ip = iph->daddr;
+                            connections.back().client_ip = iph->saddr;
+                            connections.back().server_ip = iph->daddr;
                             break;
 
                     }
 
-
-                    client_port = tcph->source;
+                    connections.back().client_port = tcph->source;
 
                     // timestamp from ethernet header
-                    timestamp_sec = header->ts.tv_sec;
-                    timestamp_milisec = header->ts.tv_usec / 1000;
+                    connections.back().timestamp_sec = header->ts.tv_sec;
+                    connections.back().timestamp_milisec = header->ts.tv_usec / 1000;
+
+
+
+
+
                 }
 
-                if (client_port == tcph->source || client_port == tcph->dest) {
-//                        printf("\nthis is still the same sessien | packet: %d \n", TCPpacketCount);
+                else {
+                    for (int i = 0; i < connections.size(); i++) {
+                        if ((connections[i].client_port == tcph->source) || (connections[i].client_port == tcph->dest)) {
+//                        printf("\nthis is still the same session | packet: %d \n", TCPpacketCount);
 //
 //                        printf("FIN FLAG: %d\n", tcph->fin );
 //                        printf("ACK FLAG: %d\n", tcph->ack );
 //                        printf("SYN FLAG: %d\n", tcph->syn );
+                            connections[i].TCPpacketCount += 1; //=======================================<packets>
 
-                    // PAYLOAD
+                            // PAYLOAD
 
-                    for (u_int i = total_header_len; (i < header->caplen); i++) {
-                        //if ((i % 16) == 0) printf("\n");
-                        //printf("%.2x ", data[i]);
-                        payload.push_back(data[i]);
-                    }
-                    if (!payload.empty()) {
-                        for (int i = 0; i < payload.size(); i++) {
-                            // printing payload
+                            for (u_int j = total_header_len; (j < header->caplen); j++) {
+                                //if ((j % 16) == 0) printf("\n");
+                                //printf("%.2x ", data[j]);
+                                payload.push_back(data[j]);
+                            }
+
+                            if (!payload.empty()) {
+                                for (int j = 0; j < payload.size(); j++) {
+                                    // printing payload
 
 //                                if ((i % 16) == 0) printf("\n");
 //                                printf("%.2x ", payload[i]);
 
-                            // Finding record header in payload
-                            if (((payload[i] >= 0x14) && (payload[i] <= 0x17)) && (payload[i + 1] == 0x03) &&
-                                ((payload[i + 2] >= 0x01) && payload[i + 2] <= 0x04)) {
-                                u_short length =
-                                        (payload.at(i + 3) << 8) + payload.at(i + 4); // length value from record header
-                                bytes += length;
+                                    // Finding record header in payload
+                                    if (((payload[j] >= 0x14) && (payload[j] <= 0x17)) && (payload[j + 1] == 0x03) && ((payload[j + 2] >= 0x01) && payload[j + 2] <= 0x04)) {
+                                        u_short length = (payload[j + 3] << 8) + payload[j + 4]; // length value from record header
+                                        connections[i].bytes += length;
 
-                                // indicating Client hello
-                                if ((payload[i] == 0x16) && payload[i + 5] ==
-                                                            0x01) { // payload[i+5] is start of handshake header, 01 is client hello
-                                    clientHello = payload;
-                                    client_hello = true;
-                                    SNI = find_SNI(clientHello, SNI, i);
+                                        // indicating Client hello
+                                        if ((payload[j] == 0x16) && (payload[j + 5] == 0x01)) { // payload[i+5] is start of handshake header, 01 is client hello
+                                            clientHello = payload;
+                                            connections[i].client_hello = true;
+                                            connections[i].SNI = find_SNI(clientHello, SNI, j);
+                                        }
+                                        // indicating Server hello
+                                        if ((payload[j] == 0x16) && (payload[j + 5] == 0x02)) {
+                                            connections[i].server_hello = true;
+                                        }
+                                    }
                                 }
-                                // indicating Server hello
-                                if ((payload[i] == 0x16) && payload[i + 5] == 0x02) {
-                                    server_hello = true;
+
+                            }
+
+                            if (tcph->fin == 1 && (connections[i].client_port == tcph->source)) { // client FIN (first)
+                                connections[i].first_fin = true;
+                            }
+
+                            if (tcph->rst == 1) {
+                                if (connections[i].client_hello && connections[i].server_hello) {
+                                    double timestamp_lastTCP =
+                                            (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
+                                    int ip_version;
+                                    switch (ntohs(eth_h->h_proto)) {
+                                        case ETH_P_IPV6:
+                                            ip_version = 6;
+                                            break;
+
+                                        case ETH_P_IP:
+                                            ip_version = 4;
+                                            break;
+
+                                    }
+                                    print_connection(i, timestamp_lastTCP, ip_version);
                                 }
                             }
+
+                            if (tcph->fin == 1 && (connections[i].client_port == tcph->dest) && connections[i].first_fin) { // server FIN (second)
+
+                                if (connections[i].client_hello && connections[i].server_hello) {
+                                    double timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
+                                    int ip_version;
+                                    switch (ntohs(eth_h->h_proto)) {
+                                        case ETH_P_IPV6:
+                                            ip_version = 6;
+                                            break;
+
+                                        case ETH_P_IP:
+                                            ip_version = 4;
+                                            break;
+
+                                    }
+                                    print_connection(i, timestamp_lastTCP, ip_version);
+//                                    double timestamp_lastTCP, timestamp;
+//                                    timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
+//                                    timestamp = (double) connections[i].timestamp_sec * 1000000000 + connections[i].timestamp_milisec * 1000;
+//
+//                                    connections[i].duration = ((double) timestamp_lastTCP - (double) timestamp) / 1000000000;
+//
+//                                    print_timestamp(connections[i].timestamp_sec, connections[i].timestamp_milisec);
+//
+//                                    switch (ntohs(eth_h->h_proto)) {
+//                                        case ETH_P_IPV6:
+//                                            print_ip6(connections[i].client_ip6); // print source ipv6
+//                                            printf("%d,", ntohs(connections[i].client_port)); // source port
+//                                            print_ip6(connections[i].server_ip6); // destination ipv6
+//                                            break;
+//
+//                                        case ETH_P_IP:
+//                                            print_ip(connections[i].client_ip); // print source ipv4
+//                                            printf("%d,", ntohs(connections[i].client_port)); // source port
+//                                            print_ip(connections[i].server_ip); // destination ipv4
+//                                            break;
+//
+//                                    }
+//
+//
+//                                    for (unsigned char i : connections[i].SNI) {
+//                                        printf("%c", i);
+//                                    }
+//                                    printf(",%d,", connections[i].bytes);
+//                                    printf("%d,", connections[i].TCPpacketCount);
+//                                    printf("%.6f\n", connections[i].duration);
+                                }
+
+
+//                            SNI.clear();
+//                            bytes = 0;
+//                            TCPpacketCount = 0;
+//                            client_hello = false;
+//                            server_hello = false;
+//                            first_fin = false;
+
+
+                            }
+
                         }
 
                     }
-
-                    if (tcph->fin == 1 && (client_port == tcph->source)) { // client FIN (first)
-                        first_fin = true;
-
-                    }
-                    if (tcph->fin == 1 && (client_port == tcph->dest) && first_fin) { // server FIN (second)
-
-                        if (client_hello && server_hello) {
-                            double timestamp_lastTCP, timestamp, duration;
-                            timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
-                            timestamp = (double) timestamp_sec * 1000000000 + timestamp_milisec * 1000;
-
-                            duration = ((double) timestamp_lastTCP - (double) timestamp) / 1000000000;
-
-                            print_timestamp(timestamp_sec, timestamp_milisec);
-
-                            switch (ntohs(eth_h->h_proto)) {
-                                case ETH_P_IPV6:
-                                    print_ip6(client_ip6); // print source ipv6
-                                    printf("%d,", ntohs(client_port)); // source port
-                                    print_ip6(server_ip6); // destination ipv6
-                                    break;
-
-                                case ETH_P_IP:
-                                    print_ip(client_ip); // print source ipv4
-                                    printf("%d,", ntohs(client_port)); // source port
-                                    print_ip(server_ip); // destination ipv4
-                                    break;
-
-                            }
-
-
-                            for (unsigned char i : SNI) {
-                                printf("%c", i);
-                            }
-                            printf(",%d,", bytes);
-                            printf("%d,", TCPpacketCount);
-                            printf("%.6f\n", duration);
-                        }
-
-
-                        SNI.clear();
-                        bytes = 0;
-                        TCPpacketCount = 0;
-                        client_hello = false;
-                        server_hello = false;
-                        first_fin = false;
-
-
-                    }
-
-
                 }
+
 
                 payload.clear();
 
             }
+
         }
     }
+
+
 
 
 
