@@ -6,41 +6,15 @@
 
 #IncludeRegexTransform: 
 
-/home/monett666/Documents/FIT/ISA/SSL-sniffer/args.hpp
-iostream
--
-
-/home/monett666/Documents/FIT/ISA/SSL-sniffer/main.cpp
-iostream
--
-vector
--
-iterator
--
-algorithm
--
-string
--
+/home/monett666/Documents/FIT/ISA/SSL-sniffer/args.cpp
 args.hpp
 /home/monett666/Documents/FIT/ISA/SSL-sniffer/args.hpp
-pcap/pcap.h
--
-netinet/ip.h
--
-netinet/ip6.h
--
-netinet/tcp.h
--
-sys/time.h
+getopt.h
 -
 ifaddrs.h
 -
-sys/types.h
--
-ifaddrs.h
--
-net/ethernet.h
--
-arpa/inet.h
+
+/home/monett666/Documents/FIT/ISA/SSL-sniffer/args.hpp
+iostream
 -
 

@@ -38,9 +38,10 @@ void args(int argc, char **argv, bool *iface, string *given_iface, bool *file, s
     int opt;
     get_ifaces();
     string help = "Usage: ./sslsniff [-r file] [-i interface]\n"
+                  "       for interface sniffing use sudo\n"
                   "Output: <timestamp>,<client ip>,<client port>,<server ip>,<SNI>,<bytes>,<packets>,<duration sec>\n"
-                  "            <bytes> - sum of SSL bytes\n"
-                  "            <packets> - sum of TCP packets of SSL session\n"
+                  "        <bytes> - sum of SSL bytes\n"
+                  "        <packets> - sum of TCP packets of SSL session\n"
                   "Available interfaces:" + available_ifaces;
 
 
