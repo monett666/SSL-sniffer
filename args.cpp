@@ -6,10 +6,8 @@
  */
 
 #include "args.hpp"
-#include <getopt.h>
-#include <ifaddrs.h>
 
-using namespace std;
+
 string available_ifaces = "";
 
 /*
@@ -26,7 +24,6 @@ void get_ifaces() {
             available_ifaces = available_ifaces + " " + tmp->ifa_name;
         tmp = tmp->ifa_next;
     }
-
 
     freeifaddrs(addrs);
 }

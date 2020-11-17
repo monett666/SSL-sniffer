@@ -9,8 +9,11 @@
 #define ARGS_H
 
 #include <iostream>
+#include <getopt.h>
+#include <ifaddrs.h>
 
 using namespace std;
 
+void get_ifaces();
 void args(int argc, char **argv, bool *iface, string *given_iface, bool *file, string *given_file);
 #endif
