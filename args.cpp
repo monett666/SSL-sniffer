@@ -24,7 +24,6 @@ void get_ifaces() {
     while(tmp) {
         if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
             available_ifaces = available_ifaces + " " + tmp->ifa_name;
-//            cout << tmp->ifa_name << endl;
         tmp = tmp->ifa_next;
     }
 
@@ -39,6 +38,9 @@ void args(int argc, char **argv, bool *iface, string *given_iface, bool *file, s
     int opt;
     get_ifaces();
     string help = "Usage: ./sslsniff [-r file] [-i interface]\n"
+                  "Output: <timestamp>,<client ip>,<client port>,<server ip>,<SNI>,<bytes>,<packets>,<duration sec>\n"
+                  "            <bytes> - sum of SSL bytes\n"
+                  "            <packets> - sum of TCP packets of SSL session\n"
                   "Available interfaces:" + available_ifaces;
 
 
@@ -59,12 +61,10 @@ void args(int argc, char **argv, bool *iface, string *given_iface, bool *file, s
             case 'r':
                 *file = true;
                 *given_file = optarg;
-//                cout << "Given file:" << *given_file << endl;
                 break;
             case 'i':
                 *iface = true;
                 *given_iface = optarg;
-                cout << "Sniff interface:" << *given_iface << endl;
                 break;
 
             default:

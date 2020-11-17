@@ -68,7 +68,7 @@ vector<TLS_connection> connections;
 //https://www.tcpdump.org/pcap.html
 
 
-void find_SNI(vector<u_char> clientHello, int record_header_index, int index) {
+void find_SNI(vector<u_char> clientHello, int record_header_index, int session_index) {
 
     uint8_t handshake_type_index = record_header_index + 5; // 0x01
     uint8_t  session_id_index = handshake_type_index + 32 + 5 + 1; // 5 - handshake header + client version, 32 - client random
@@ -94,14 +94,13 @@ void find_SNI(vector<u_char> clientHello, int record_header_index, int index) {
             u_short SN_length = (clientHello[i+7] << 8) + clientHello[i+8];
 
             for (int j = 0; j < SN_length; j++) {
-                connections[index].SNI.push_back(clientHello[i+9+j]);
+                connections[session_index].SNI.push_back(clientHello[i+9+j]);
             }
         }
         else {
             concrete_extension_length = (clientHello[i+2] << 8) + clientHello[i+3];
         }
     }
-
 
 }
 
