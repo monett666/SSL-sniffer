@@ -69,7 +69,7 @@ vector<TLS_connection> connections;
 //https://www.tcpdump.org/pcap.html
 
 
-vector<u_char> find_SNI(vector<u_char> clientHello, vector<u_char>SNI, int record_header_index) {
+void find_SNI(vector<u_char> clientHello, int record_header_index, int index) {
 
     uint8_t handshake_type_index = record_header_index + 5; // 0x01
     uint8_t  session_id_index = handshake_type_index + 32 + 5 + 1; // 5 - handshake header + client version, 32 - client random
@@ -92,17 +92,17 @@ vector<u_char> find_SNI(vector<u_char> clientHello, vector<u_char>SNI, int recor
 
     for (unsigned int i = extensions_length_index + 2; i < clientHello.size(); i += 4 + concrete_extension_length) { // 4 - 2 bytes for extension type and 2 bytes for length
         if ((clientHello[i]) == 0x00 && (clientHello[i+1] == 0x00 && (clientHello[i+6] == 0x00))) { // 0x00 0x00 indicates server name extension
-            int SN_length = (clientHello[i+7] << 8) + clientHello[i+8];
+            u_short SN_length = (clientHello[i+7] << 8) + clientHello[i+8];
 
             for (int j = 0; j < SN_length; j++) {
-                SNI.push_back(clientHello[i+9+j]);
+                connections[index].SNI.push_back(clientHello[i+9+j]);
             }
         }
         else {
             concrete_extension_length = (clientHello[i+2] << 8) + clientHello[i+3];
         }
     }
-    return SNI;
+
 
 }
 
@@ -312,7 +312,7 @@ int main(int argc, char **argv) {
                 /*
                  * FIRT TCP PACKET
                  */
-                if ((tcph->ack == 0) && (tcph->syn) == 1) { // first part of threeway handshake
+                if ((tcph->ack == 0) && ((tcph->syn) == 1)) { // first part of threeway handshake
 
 
 //                    SNI.clear();
@@ -370,10 +370,6 @@ int main(int argc, char **argv) {
 
                             if (!payload.empty()) {
                                 for (int j = 0; j < payload.size(); j++) {
-                                    // printing payload
-
-//                                if ((i % 16) == 0) printf("\n");
-//                                printf("%.2x ", payload[i]);
 
                                     // Finding record header in payload
                                     if (((payload[j] >= 0x14) && (payload[j] <= 0x17)) && (payload[j + 1] == 0x03) && ((payload[j + 2] >= 0x01) && payload[j + 2] <= 0x04)) {
@@ -381,16 +377,20 @@ int main(int argc, char **argv) {
                                         connections[i].bytes += length;
 
                                         // indicating Client hello
-                                        if ((payload[j] == 0x16) && (payload[j + 5] == 0x01)) { // payload[i+5] is start of handshake header, 01 is client hello
+                                        if ((payload[j] == 0x16) && (payload[j + 5] == 0x01) &&
+                                            !connections[i].client_hello) { // payload[i+5] is start of handshake header, 01 is client hello
                                             clientHello = payload;
                                             connections[i].client_hello = true;
-                                            connections[i].SNI = find_SNI(clientHello, SNI, j);
+                                            find_SNI(clientHello, j, i);
+
+
                                         }
                                         // indicating Server hello
                                         if ((payload[j] == 0x16) && (payload[j + 5] == 0x02)) {
                                             connections[i].server_hello = true;
                                         }
                                     }
+
                                 }
 
                             }
@@ -400,9 +400,9 @@ int main(int argc, char **argv) {
                             }
 
                             if ((tcph->fin == 1 && (connections[i].client_port == tcph->dest) && connections[i].first_fin && !connections[i].already_print) || (tcph->rst == 1) && !connections[i].already_print) { // server FIN (second)
-
+                                connections[i].already_print = true;
                                 if (connections[i].client_hello && connections[i].server_hello) {
-                                    connections[i].already_print = true;
+
                                     double timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
                                     int ip_version;
                                     switch (ntohs(eth_h->h_proto)) {
@@ -437,6 +437,7 @@ int main(int argc, char **argv) {
 
 
                 payload.clear();
+
 
             }
 
