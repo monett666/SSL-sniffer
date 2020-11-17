@@ -44,22 +44,21 @@ bool file = false;
 bool iface = false;
 
 typedef struct TLS_conn {
-    unsigned int timestamp_sec;
-    unsigned int timestamp_milisec;
+    unsigned int timestamp_sec{};
+    unsigned int timestamp_milisec{};
     bool client_hello = false;
     bool server_hello = false;
     bool first_fin = false;
     u_int TCPpacketCount = 0; // TCP packets counter
-    uint32_t client_ip;
-    uint32_t server_ip;
+    uint32_t client_ip{};
+    uint32_t server_ip{};
     struct in6_addr client_ip6{};
     struct in6_addr server_ip6{};
-    uint16_t client_port;
+    uint16_t client_port{};
     vector<u_char> SNI;
     u_int bytes = 0;
-    double duration;
+    double duration{};
     bool already_print = false;
-//    double timestamp_lastTCP, timestamp, duration;
 
 } TLS_connection;
 
@@ -105,8 +104,6 @@ void find_SNI(vector<u_char> clientHello, int record_header_index, int index) {
 
 
 }
-
-
 
 
 /*
@@ -210,7 +207,6 @@ void print_connection(int i, double timestamp_lastTCP, int ip_version) {
 }
 
 
-
 int main(int argc, char **argv) {
 
     unsigned int total_header_len; //ethernet header + ip header + tcp header
@@ -218,23 +214,13 @@ int main(int argc, char **argv) {
     string given_file; // file path from argument
 
     u_int ALLpacketsCount = 0;
-//    u_int TCPpacketCount = 0; // TCP packets counter
-
-//    int bytes = 0;
-
-//    bool client_hello = false;
-//    bool server_hello = false;
-//    bool first_fin = false;
-
-
 
     vector<u_char> payload;
     vector<u_char> clientHello;
     vector<u_char> SNI;
 
+    pcap_t *pcap;
 
-//    unsigned int timestamp_sec;
-//    unsigned int timestamp_milisec;
 
     char errbuff[PCAP_ERRBUF_SIZE];
 
@@ -245,44 +231,36 @@ int main(int argc, char **argv) {
      * =======================================================================
      */
     if (file) {
-        cout << "work with file " + given_file << endl;
-
         //https://www.rhyous.com/2011/11/13/how-to-read-a-pcap-file-from-wireshark-with-c/
-
-        pcap_t *pcap = pcap_open_offline_with_tstamp_precision(given_file.c_str(), PCAP_TSTAMP_PRECISION_NANO, errbuff);
+        pcap = pcap_open_offline_with_tstamp_precision(given_file.c_str(), PCAP_TSTAMP_PRECISION_NANO, errbuff);
         if (pcap == nullptr) {
             cerr << "Could not open file: " << given_file << endl;
+            exit(1);
         }
+    }
+    /* INTERFACE SNIFFFING
+     * =======================================================================
+     */
+    else if (iface) {
+        pcap = pcap_open_live(given_iface.c_str(), 65536, 1, 1,  errbuff);
+        if (pcap == nullptr) {
+            cerr << "Could not open interface " << given_iface << endl;
+            exit(1);
+        }
+    }
 
         struct pcap_pkthdr *header; // create header object
         const u_char *data; // create character array using a u_char
 
-
-
         while (pcap_next_ex(pcap, &header, &data) >= 0) {
-
-
 
             auto *eth_h = (struct ethhdr *) data;
             unsigned short ethhrdlen = sizeof(struct ethhdr);
             unsigned short iphdrlen;
             unsigned int tcphdrlen;
 
-//            if (ntohs(eth_h->h_proto) == ETH_P_8021Q) {
-//                ethhrdlen += 4;
-//            }
-
             auto *ip6h = (struct ip6_hdr *) (data + ethhrdlen); // data/buffer?
             auto *iph = (struct iphdr *) (data + ethhrdlen);
-
-//            uint32_t client_ip;
-//            uint32_t server_ip;
-//
-//            struct in6_addr client_ip6{};
-//            struct in6_addr server_ip6{};
-
-//            uint16_t client_port;
-
 
             if (header->len != header->caplen)
                 printf("Warning capture size different than packet size> %ud bytes \n", header->len);
@@ -314,16 +292,10 @@ int main(int argc, char **argv) {
                  */
                 if ((tcph->ack == 0) && ((tcph->syn) == 1)) { // first part of threeway handshake
 
-
-//                    SNI.clear();
                     TLS_connection conn;
                     connections.push_back(conn);
-//                    SNI.clear();
-//                    bytes = 0;
+
                     connections.back().TCPpacketCount = 1;
-//                    first_fin = false;
-//                    client_hello = false;
-//                    server_hello = false;
 
                     switch (ntohs(eth_h->h_proto)) {
                         case ETH_P_IPV6:
@@ -343,66 +315,52 @@ int main(int argc, char **argv) {
                     // timestamp from ethernet header
                     connections.back().timestamp_sec = header->ts.tv_sec;
                     connections.back().timestamp_milisec = header->ts.tv_usec / 1000;
-
-
-
-
-
                 }
-
                 else {
                     for (int i = 0; i < connections.size(); i++) {
                         if ((connections[i].client_port == tcph->source) || (connections[i].client_port == tcph->dest)) {
-//                        printf("\nthis is still the same session | packet: %d \n", TCPpacketCount);
-//
-//                        printf("FIN FLAG: %d\n", tcph->fin );
-//                        printf("ACK FLAG: %d\n", tcph->ack );
-//                        printf("SYN FLAG: %d\n", tcph->syn );
+
                             connections[i].TCPpacketCount += 1; //=======================================<packets>
 
-                            // PAYLOAD
-
+                            // filling payload (without ethernet header, ip header, tcp header)
                             for (u_int j = total_header_len; (j < header->caplen); j++) {
-                                //if ((j % 16) == 0) printf("\n");
-                                //printf("%.2x ", data[j]);
                                 payload.push_back(data[j]);
                             }
-
+                            // if payload is not empty means this could be TLS paket
                             if (!payload.empty()) {
                                 for (int j = 0; j < payload.size(); j++) {
-
                                     // Finding record header in payload
                                     if (((payload[j] >= 0x14) && (payload[j] <= 0x17)) && (payload[j + 1] == 0x03) && ((payload[j + 2] >= 0x01) && payload[j + 2] <= 0x04)) {
                                         u_short length = (payload[j + 3] << 8) + payload[j + 4]; // length value from record header
                                         connections[i].bytes += length;
 
-                                        // indicating Client hello
+                                        // indicating Client hello and finding SNI in Client hello
                                         if ((payload[j] == 0x16) && (payload[j + 5] == 0x01) &&
                                             !connections[i].client_hello) { // payload[i+5] is start of handshake header, 01 is client hello
                                             clientHello = payload;
                                             connections[i].client_hello = true;
                                             find_SNI(clientHello, j, i);
-
-
                                         }
+
                                         // indicating Server hello
                                         if ((payload[j] == 0x16) && (payload[j + 5] == 0x02)) {
                                             connections[i].server_hello = true;
                                         }
                                     }
-
                                 }
-
                             }
-
-                            if (tcph->fin == 1 && (connections[i].client_port == tcph->source)) { // client FIN (first)
+                            // first FIN (from client)
+                            if (tcph->fin == 1 && (connections[i].client_port == tcph->source)) {
                                 connections[i].first_fin = true;
                             }
-
+                            /* second FIN (from server)
+                             * if RST has arrived and TLS handshake has been done, connection is printed
+                             */
                             if ((tcph->fin == 1 && (connections[i].client_port == tcph->dest) && connections[i].first_fin && !connections[i].already_print) || (tcph->rst == 1) && !connections[i].already_print) { // server FIN (second)
                                 connections[i].already_print = true;
                                 if (connections[i].client_hello && connections[i].server_hello) {
 
+                                    // timestamp from second FIN or RST paket to calculate duration
                                     double timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
                                     int ip_version;
                                     switch (ntohs(eth_h->h_proto)) {
@@ -416,44 +374,14 @@ int main(int argc, char **argv) {
 
                                     }
                                     print_connection(i, timestamp_lastTCP, ip_version);
-//
                                 }
-
-
-//                            SNI.clear();
-//                            bytes = 0;
-//                            TCPpacketCount = 0;
-//                            client_hello = false;
-//                            server_hello = false;
-//                            first_fin = false;
-
-
                             }
-
                         }
-
                     }
                 }
-
-
                 payload.clear();
-
-
             }
-
         }
-    }
-
-
-
-
-
-    /* INTERFACE SNIFFFING
-     * =======================================================================
-     */
-
-    if (iface)
-        cout << "work with iface" << endl;
 
     return 0;
 }
