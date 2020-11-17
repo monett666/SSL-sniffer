@@ -58,6 +58,7 @@ typedef struct TLS_conn {
     vector<u_char> SNI;
     u_int bytes = 0;
     double duration;
+    bool already_print = false;
 //    double timestamp_lastTCP, timestamp, duration;
 
 } TLS_connection;
@@ -398,28 +399,10 @@ int main(int argc, char **argv) {
                                 connections[i].first_fin = true;
                             }
 
-                            if (tcph->rst == 1) {
-                                if (connections[i].client_hello && connections[i].server_hello) {
-                                    double timestamp_lastTCP =
-                                            (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
-                                    int ip_version;
-                                    switch (ntohs(eth_h->h_proto)) {
-                                        case ETH_P_IPV6:
-                                            ip_version = 6;
-                                            break;
-
-                                        case ETH_P_IP:
-                                            ip_version = 4;
-                                            break;
-
-                                    }
-                                    print_connection(i, timestamp_lastTCP, ip_version);
-                                }
-                            }
-
-                            if (tcph->fin == 1 && (connections[i].client_port == tcph->dest) && connections[i].first_fin) { // server FIN (second)
+                            if ((tcph->fin == 1 && (connections[i].client_port == tcph->dest) && connections[i].first_fin && !connections[i].already_print) || (tcph->rst == 1) && !connections[i].already_print) { // server FIN (second)
 
                                 if (connections[i].client_hello && connections[i].server_hello) {
+                                    connections[i].already_print = true;
                                     double timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
                                     int ip_version;
                                     switch (ntohs(eth_h->h_proto)) {
@@ -433,36 +416,7 @@ int main(int argc, char **argv) {
 
                                     }
                                     print_connection(i, timestamp_lastTCP, ip_version);
-//                                    double timestamp_lastTCP, timestamp;
-//                                    timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
-//                                    timestamp = (double) connections[i].timestamp_sec * 1000000000 + connections[i].timestamp_milisec * 1000;
 //
-//                                    connections[i].duration = ((double) timestamp_lastTCP - (double) timestamp) / 1000000000;
-//
-//                                    print_timestamp(connections[i].timestamp_sec, connections[i].timestamp_milisec);
-//
-//                                    switch (ntohs(eth_h->h_proto)) {
-//                                        case ETH_P_IPV6:
-//                                            print_ip6(connections[i].client_ip6); // print source ipv6
-//                                            printf("%d,", ntohs(connections[i].client_port)); // source port
-//                                            print_ip6(connections[i].server_ip6); // destination ipv6
-//                                            break;
-//
-//                                        case ETH_P_IP:
-//                                            print_ip(connections[i].client_ip); // print source ipv4
-//                                            printf("%d,", ntohs(connections[i].client_port)); // source port
-//                                            print_ip(connections[i].server_ip); // destination ipv4
-//                                            break;
-//
-//                                    }
-//
-//
-//                                    for (unsigned char i : connections[i].SNI) {
-//                                        printf("%c", i);
-//                                    }
-//                                    printf(",%d,", connections[i].bytes);
-//                                    printf("%d,", connections[i].TCPpacketCount);
-//                                    printf("%.6f\n", connections[i].duration);
                                 }
 
 
