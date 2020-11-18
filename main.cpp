@@ -5,38 +5,23 @@
  * Login: xbures32
  */
 
-// https://github.com/x00Pavel/SSL-monitor
 // http://blog.fourthbit.com/2014/12/23/traffic-analysis-of-an-ssl-slash-tls-session/
-// https://stackoverflow.com/questions/35385189/how-to-identify-initial-packet-in-tcp-3-way-handshake
-// https://www.cloudflare.com/learning/ssl/what-is-sni/
-// https://stackoverflow.com/questions/17832592/extract-server-name-indication-sni-from-tls-client-hello
+
+
 
 #include <iostream>
 #include <vector>
-#include<iterator>
-#include <algorithm>
 #include <string>
 #include "args.hpp"
 #include <pcap/pcap.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
-
-
-
-
-#include <sys/time.h>
-
-
 #include <ifaddrs.h>
-
 #include <sys/types.h>
-
-#include <ifaddrs.h>
-
 #include <net/ethernet.h>
-
-#include <arpa/inet.h> // for inet_ntoa()
+#include <arpa/inet.h>
+#include <ctime>
 
 using namespace std;
 
@@ -44,8 +29,9 @@ bool file = false;
 bool iface = false;
 
 typedef struct TLS_conn {
-    unsigned int timestamp_sec{};
-    unsigned int timestamp_milisec{};
+//    unsigned int timestamp_sec{};
+//    unsigned int timestamp_milisec{};
+    struct timeval timestamp{};
     bool client_hello = false;
     bool server_hello = false;
     bool first_fin = false;
@@ -67,7 +53,10 @@ vector<TLS_connection> connections;
 
 //https://www.tcpdump.org/pcap.html
 
-
+/*
+ * https://www.cloudflare.com/learning/ssl/what-is-sni/
+ * https://stackoverflow.com/questions/17832592/extract-server-name-indication-sni-from-tls-client-hello
+ */
 void find_SNI(vector<u_char> clientHello, int record_header_index, int session_index) {
 
     uint8_t handshake_type_index = record_header_index + 5; // 0x01
@@ -104,66 +93,6 @@ void find_SNI(vector<u_char> clientHello, int record_header_index, int session_i
 
 }
 
-
-/*
- * Function converts timestamp from epoch (1970) time to human date format and print it.
- * https://github.com/sidsingh78/EPOCH-to-time-date-converter/blob/master/epoch_conv.c
- */
-void print_timestamp(unsigned int timestamp_sec, unsigned int timestamp_milisec) {
-
-    static unsigned char month_days[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-
-    unsigned char ntp_hour, ntp_minute, ntp_day, ntp_month, leap_days, ntp_seconds;
-
-    unsigned short temp_days;
-
-    unsigned int ntp_year, days_since_epoch, day_of_year;
-
-    unsigned int epoch = timestamp_sec;
-
-    leap_days = 0;
-
-    // UTC time zone to CEST (+2h)
-    epoch += 7200;
-
-    ntp_seconds = epoch % 60;
-    epoch /= 60;
-    ntp_minute = epoch % 60;
-    epoch /= 60;
-    ntp_hour = epoch % 24;
-    epoch /= 24;
-
-    days_since_epoch = epoch; // number of days since epoch
-
-    ntp_year = 1970 + (days_since_epoch/365); // ball parking year, may not be accurate!
-
-    int i;
-    for (i = 1972; i < ntp_year; i += 4) // calculating number of leap days since epoch
-        if(((i%4 == 0) && (i%100 != 0)) || (i%400 == 0)) leap_days++;
-
-    ntp_year = 1970 + ((days_since_epoch - leap_days)/365); // calculating accurate current year by (days_since_epoch - extra leap days)
-    day_of_year = ((days_since_epoch - leap_days)%365)+1;
-
-    if(((ntp_year%4 == 0) && (ntp_year%100 != 0)) || (ntp_year%400 == 0)) {
-        month_days[1] = 29; // February = 29 days for leap years
-    }
-    else month_days[1] = 28;
-
-    temp_days = 0;
-
-    for (ntp_month = 0; ntp_month <= 11; ntp_month++) { // calculating current month
-        if (day_of_year <= temp_days) break;
-        temp_days = temp_days + month_days[ntp_month];
-    }
-
-    temp_days = temp_days - month_days[ntp_month-1]; // calculating current day
-    ntp_day = day_of_year - temp_days;
-
-    printf("%4d-%02d-%02d", ntp_year, ntp_month, ntp_day); // prints date
-    printf(" %02d:%02d:%02d.%06u,", ntp_hour, ntp_minute, ntp_seconds, timestamp_milisec); // prints time
-
-}
-
 void print_ip(const uint32_t in) {
     struct sockaddr_in addr{};
     addr.sin_addr.s_addr = in;
@@ -176,15 +105,24 @@ void print_ip6(const struct in6_addr in) {
     printf("%s,", ipstr);
 }
 
+void print_timestamp(int session_index) {
+    struct tm *local;
+    char date[80];
+
+    local = localtime(&connections[session_index].timestamp.tv_sec);
+
+    strftime(date, 80, "%Y-%m-%d %X.", local);
+    printf("%s%06ld ", date, connections[session_index].timestamp.tv_usec);
+}
+
 void print_connection(int i, double timestamp_lastTCP, int ip_version) {
     double timestamp;
 
-    timestamp = (double) connections[i].timestamp_sec * 1000000000 + connections[i].timestamp_milisec * 1000;
+    timestamp = (double) connections[i].timestamp.tv_sec * 1000000000 + (double) connections[i].timestamp.tv_usec * 1000;
 
-    connections[i].duration = ((double) timestamp_lastTCP - (double) timestamp) / 1000000000;
+    connections[i].duration =  (timestamp_lastTCP - timestamp) / 1000000000;
 
-    print_timestamp(connections[i].timestamp_sec, connections[i].timestamp_milisec);
-
+    print_timestamp(i);
     if(ip_version == 6) {
         print_ip6(connections[i].client_ip6); // print source ipv6
         printf("%d,", ntohs(connections[i].client_port)); // source port
@@ -195,7 +133,6 @@ void print_connection(int i, double timestamp_lastTCP, int ip_version) {
         printf("%d,", ntohs(connections[i].client_port)); // source port
         print_ip(connections[i].server_ip); // destination ipv4
     }
-
 
     for (unsigned char j : connections[i].SNI) {
         printf("%c", j);
@@ -288,6 +225,7 @@ int main(int argc, char **argv) {
 
                 /*
                  * FIRT TCP PACKET
+                 * https://stackoverflow.com/questions/35385189/how-to-identify-initial-packet-in-tcp-3-way-handshake
                  */
                 if ((tcph->ack == 0) && ((tcph->syn) == 1)) { // first part of threeway handshake
 
@@ -296,7 +234,7 @@ int main(int argc, char **argv) {
 
                     connections.back().TCPpacketCount = 1;
 
-                    switch (ntohs(eth_h->h_proto)) {
+                    switch (ntohs(eth_h->h_proto)) { // ETH_P_8021Q
                         case ETH_P_IPV6:
                             connections.back().client_ip6 = ip6h->ip6_src;
                             connections.back().server_ip6 = ip6h->ip6_dst;
@@ -311,15 +249,15 @@ int main(int argc, char **argv) {
 
                     connections.back().client_port = tcph->source;
 
-                    // timestamp from ethernet header
-                    connections.back().timestamp_sec = header->ts.tv_sec;
-                    connections.back().timestamp_milisec = header->ts.tv_usec / 1000;
+                    // timestamp from first TCP packet
+                    connections.back().timestamp.tv_sec = header->ts.tv_sec;
+                    connections.back().timestamp.tv_usec = header->ts.tv_usec / 1000;
                 }
                 else {
                     for (int i = 0; i < connections.size(); i++) {
                         if ((connections[i].client_port == tcph->source) || (connections[i].client_port == tcph->dest)) {
 
-                            connections[i].TCPpacketCount += 1; //=======================================<packets>
+                            connections[i].TCPpacketCount += 1; // <packets>
 
                             // filling payload (without ethernet header, ip header, tcp header)
                             for (u_int j = total_header_len; (j < header->caplen); j++) {
@@ -349,7 +287,7 @@ int main(int argc, char **argv) {
                                 }
                             }
                             // first FIN (from client)
-                            if (tcph->fin == 1 && (connections[i].client_port == tcph->source)) {
+                            if (tcph->fin == 1 && ((connections[i].client_port == tcph->source) || (connections[i].client_port == tcph->dest))) {
                                 connections[i].first_fin = true;
                             }
                             /* second FIN (from server)
@@ -360,7 +298,7 @@ int main(int argc, char **argv) {
                                 if (connections[i].client_hello && connections[i].server_hello) {
 
                                     // timestamp from second FIN or RST paket to calculate duration
-                                    double timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + (double) header->ts.tv_usec;
+                                    double timestamp_lastTCP = (double) header->ts.tv_sec * 1000000000 + header->ts.tv_usec;
                                     int ip_version;
                                     switch (ntohs(eth_h->h_proto)) {
                                         case ETH_P_IPV6:
