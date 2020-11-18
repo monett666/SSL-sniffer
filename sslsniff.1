@@ -1,0 +1,19 @@
+.TH SSLSNIFF 1
+.SH NAME
+sslsniff \- console application for monitoring SSL connections
+.SH SYNOPSIS
+.B sslsniff
+[\fB\-r\fR \fIFILE\fR]
+[\fB\-i\fR \fIINTERFACE\fR]
+.SH DESCRIPTION
+.B sslsniff
+process given pcapng file or sniffs on given interface and prints information about SSL connections.
+.SH OPTIONS
+.TP
+.BR \-r
+Set file to process.
+.TP
+.BR \-i
+Set interface to be sniffed.
+.SH OUTPUT
+<timestamp>,<client ip>,<client port>,<server ip>,<SNI>,<bytes>,<packets>,<duration sec>
