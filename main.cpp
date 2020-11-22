@@ -29,8 +29,6 @@ bool file = false;
 bool iface = false;
 
 typedef struct TLS_conn {
-//    unsigned int timestamp_sec{};
-//    unsigned int timestamp_milisec{};
     struct timeval timestamp{};
     bool client_hello = false;
     bool server_hello = false;
@@ -55,7 +53,6 @@ vector<TLS_connection> connections;
 
 /*
  * https://www.cloudflare.com/learning/ssl/what-is-sni/
- * https://stackoverflow.com/questions/17832592/extract-server-name-indication-sni-from-tls-client-hello
  */
 void find_SNI(vector<u_char> clientHello, int record_header_index, int session_index) {
 
@@ -112,7 +109,7 @@ void print_timestamp(int session_index) {
     local = localtime(&connections[session_index].timestamp.tv_sec);
 
     strftime(date, 80, "%Y-%m-%d %X.", local);
-    printf("%s%06ld ", date, connections[session_index].timestamp.tv_usec);
+    printf("%s%06ld,", date, connections[session_index].timestamp.tv_usec);
 }
 
 void print_connection(int i, double timestamp_lastTCP, int ip_version) {
@@ -195,7 +192,7 @@ int main(int argc, char **argv) {
             unsigned short iphdrlen;
             unsigned int tcphdrlen;
 
-            auto *ip6h = (struct ip6_hdr *) (data + ethhrdlen); // data/buffer?
+            auto *ip6h = (struct ip6_hdr *) (data + ethhrdlen);
             auto *iph = (struct iphdr *) (data + ethhrdlen);
 
             if (header->len != header->caplen)
@@ -217,7 +214,7 @@ int main(int argc, char **argv) {
 
             if (iph->protocol == 6 || ip6h->ip6_ctlun.ip6_un1.ip6_un1_nxt == 6) { //TCP
                 auto *tcph = (struct tcphdr *) (data + iphdrlen + ethhrdlen);
-                tcphdrlen = (tcph->th_off * 4) - (tcph->th_x2 * 4);
+                tcphdrlen = sizeof(tcphdr);
                 total_header_len = sizeof(ethhdr) + iphdrlen + tcphdrlen; // size of all headers: ether + ip + tcp
 
                 // http://blog.fourthbit.com/2014/12/23/traffic-analysis-of-an-ssl-slash-tls-session/
